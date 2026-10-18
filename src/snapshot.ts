@@ -6,7 +6,7 @@ import {
   type SyncStatus, type VolumeState,
 } from './bluos.ts';
 import { discover } from './discovery.ts';
-import { devices, kv } from './store.ts';
+import { devices, events, kv } from './store.ts';
 import { readSettings, type StoredSetting } from './settings.ts';
 
 export interface SnapshotMember {
@@ -32,8 +32,40 @@ export interface SnapshotZone {
 /** Last setup read from the speakers (refresh, scan, background update or end of a recall); persisted. */
 export const latest: { current?: Snapshot } = { current: kv.get<Snapshot>('current') };
 export function setLatest(current: Snapshot) {
+  if (latest.current) logGroupChanges(latest.current, current);
   latest.current = current;
   kv.set('current', current);
+}
+
+const CHANNEL: Record<string, string> = {
+  front: 'front', left: 'left channel', right: 'right channel', side_left: 'left surround', side_right: 'right surround',
+  rear_left: 'left rear', rear_right: 'right rear',
+};
+
+/** Each speaker's place in a setup, e.g. 'right surround in "Home Theater"'. */
+function roles(s: Snapshot): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const z of s.zones) {
+    const label = `"${z.groupName ?? z.leader.name}"`;
+    const grouped = z.members.length || z.sub || z.dynamicSlaves.length;
+    out.set(z.leader.mac, grouped ? `leader of ${label}` : 'standalone');
+    for (const m of z.members) out.set(m.mac, `${CHANNEL[m.channelMode] ?? 'member'} in ${label}`);
+    if (z.sub) out.set(z.sub.mac, `subwoofer in ${label}`);
+    for (const d of z.dynamicSlaves) out.set(d.mac, `grouped with ${label}`);
+  }
+  return out;
+}
+
+// Speakers leaving or joining groups, or disappearing, are logged so dropouts can be traced later.
+function logGroupChanges(before: Snapshot, after: Snapshot) {
+  const a = roles(before), b = roles(after);
+  for (const mac of new Set([...a.keys(), ...b.keys()])) {
+    const was = a.get(mac), now = b.get(mac);
+    if (was === now) continue;
+    const player = devices.list().find((d) => d.mac === mac)?.name ?? mac;
+    const detail = !now ? `not found (was ${was})` : !was ? `found again: ${now}` : `${was} → ${now}`;
+    events.add({ mac, player, kind: 'group', detail });
+  }
 }
 
 export interface Snapshot {

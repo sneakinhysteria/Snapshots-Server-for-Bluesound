@@ -108,7 +108,9 @@ export function startMonitor(logWarn: (msg: string) => void, groupingChanged: ()
   onGroupingChange = groupingChanged;
   let n = 0;
   const loop = async () => {
-    try { await refresh(n++ % 6 === 0); } catch (e: any) { logWarn(`Monitor refresh failed: ${e.message}`); }
+    // Every 30 minutes also re-read the setup, so group changes are logged even without a syncStat change.
+    const full = n++ % 6 === 0;
+    try { await refresh(full); if (full && n > 1) onGroupingChange(); } catch (e: any) { logWarn(`Monitor refresh failed: ${e.message}`); }
     setTimeout(loop, RESCAN_MS);
   };
   loop();

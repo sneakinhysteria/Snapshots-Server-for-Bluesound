@@ -587,8 +587,8 @@ $('#scan').addEventListener('click', () => { showError(null); loadSpeakers(true)
 
 const eventLine = (e) => {
   const t = new Date(e.t);
-  const kind = { volume: 'Volume', playback: 'Playback', guard: 'Guard' }[e.kind] || e.kind;
-  return `<div class="${e.kind === 'guard' ? 'warn' : ''}">${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${kind}: ${esc(e.detail)}</div>`;
+  const kind = { volume: 'Volume', playback: 'Playback', guard: 'Guard', group: 'Group' }[e.kind] || e.kind;
+  return `<div class="${e.kind === 'guard' || e.kind === 'group' ? 'warn' : ''}">${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${kind}: ${esc(e.detail)}</div>`;
 };
 
 async function loadEvents() {
