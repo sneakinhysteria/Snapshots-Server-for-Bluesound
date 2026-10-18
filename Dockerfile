@@ -1,6 +1,6 @@
 # shairport-sync (AirPlay 2, with nqptp and avahi) as base; the app adds Node.js and ffmpeg.
 FROM mikebrady/shairport-sync:5.5.2
-RUN apk add --no-cache nodejs npm ffmpeg
+RUN apk add --no-cache nodejs npm ffmpeg avahi-tools
 WORKDIR /app
 ENV NODE_ENV=production DATA_DIR=/data PORT=8095
 # Set by the GitHub workflow; shown in the UI footer and compared with the latest build.

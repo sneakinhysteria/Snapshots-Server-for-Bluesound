@@ -1,6 +1,6 @@
 // Installed version (commit the image was built from) and the newest image available on GitHub.
 
-const REPO = 'sneakinhysteria/BluesoundSnapshots';
+const REPO = 'sneakinhysteria/Snapshots-Server-for-Bluesound';
 const CHECK_MS = 3_600_000; // GitHub allows 60 unauthenticated API requests per hour
 
 export interface Build { commit: string; date: string | null }
@@ -11,7 +11,7 @@ let available: { build: Build | null; checkedAt: number } = { build: null, check
 async function latestBuild(): Promise<Build | null> {
   // Newest successful image build on main, so "available" means the image can actually be pulled.
   const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/docker.yml/runs?branch=main&status=success&per_page=1`, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'bluesound-snapshots' },
+    headers: { accept: 'application/vnd.github+json', 'user-agent': 'snapshots-server-for-bluesound' },
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`GitHub: HTTP ${res.status}`);

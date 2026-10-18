@@ -1,18 +1,18 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>bluesound-snapshot</Name>
-  <Repository>ghcr.io/sneakinhysteria/bluesound-snapshots:latest</Repository>
-  <Registry>https://github.com/sneakinhysteria/BluesoundSnapshots/pkgs/container/bluesound-snapshots</Registry>
+  <Name>snapshots-server-for-bluesound</Name>
+  <Repository>ghcr.io/sneakinhysteria/snapshots-server-for-bluesound:latest</Repository>
+  <Registry>https://github.com/sneakinhysteria/Snapshots-Server-for-Bluesound/pkgs/container/snapshots-server-for-bluesound</Registry>
   <Network>host</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/sneakinhysteria/BluesoundSnapshots/issues</Support>
-  <Project>https://github.com/sneakinhysteria/BluesoundSnapshots</Project>
+  <Support>https://github.com/sneakinhysteria/Snapshots-Server-for-Bluesound/issues</Support>
+  <Project>https://github.com/sneakinhysteria/Snapshots-Server-for-Bluesound</Project>
   <Overview>Store and recall BluOS (Bluesound) speaker setups: fixed groups, stereo pairs, home cinema with surrounds and subwoofer pairing, levels and audio settings. Optional AirPlay 2 receiver per setup. Requires host networking.</Overview>
   <Category>MediaApp:Music Tools:</Category>
   <WebUI>http://[IP]:[PORT:8095]/</WebUI>
-  <Icon>https://raw.githubusercontent.com/sneakinhysteria/BluesoundSnapshots/main/public/icon.png</Icon>
-  <Config Name="AppData" Target="/data" Default="/mnt/user/appdata/bluesound-snapshot" Mode="rw" Description="Database (snapshots, activity log)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/bluesound-snapshot</Config>
+  <Icon>https://raw.githubusercontent.com/sneakinhysteria/Snapshots-Server-for-Bluesound/main/public/icon.png</Icon>
+  <Config Name="AppData" Target="/data" Default="/mnt/user/appdata/snapshots-server-for-bluesound" Mode="rw" Description="Database (snapshots, activity log)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/snapshots-server-for-bluesound</Config>
   <Config Name="Host D-Bus" Target="/var/run/dbus" Default="/var/run/dbus" Mode="rw" Description="Lets the host's Avahi announce the AirPlay receivers (prevents mDNS name conflicts with Unraid)" Type="Path" Display="advanced" Required="false" Mask="false">/var/run/dbus</Config>
   <Config Name="Port" Target="PORT" Default="8095" Mode="" Description="Web UI port (host network)" Type="Variable" Display="always" Required="true" Mask="false">8095</Config>
   <Config Name="Time zone" Target="TZ" Default="Europe/Berlin" Mode="" Description="Time zone for the activity log" Type="Variable" Display="always" Required="false" Mask="false">Europe/Berlin</Config>

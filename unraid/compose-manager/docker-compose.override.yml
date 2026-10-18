@@ -1,8 +1,8 @@
 # Unraid Docker tab: icon and WebUI link. Replace SERVER-IP with your server's address.
 services:
-  bluesound-snapshot:
+  snapshots-server-for-bluesound:
     labels:
       net.unraid.docker.managed: 'composeman'
-      net.unraid.docker.icon: 'https://raw.githubusercontent.com/sneakinhysteria/BluesoundSnapshots/main/public/icon.png'
+      net.unraid.docker.icon: 'https://raw.githubusercontent.com/sneakinhysteria/Snapshots-Server-for-Bluesound/main/public/icon.png'
       net.unraid.docker.webui: 'http://SERVER-IP:8095'
       net.unraid.docker.shell: 'sh'

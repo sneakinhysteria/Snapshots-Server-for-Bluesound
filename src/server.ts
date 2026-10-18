@@ -1,13 +1,14 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { join } from 'node:path';
-import { applyEdits, backfillMeta, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
+import { applyEdits, validateSnapshot, backfillMeta, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
 import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirplay, setAirplayLogger, stopAllAirplay } from './airplay.ts';
 import { registerStreams } from './stream.ts';
 import { versionInfo } from './version.ts';
 import { cover, nowPlaying, nowPlayingBus, type NowPlaying } from './metadata.ts';
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
+import { startMdns } from './mdns.ts';
 import { guardInfo, seedGuard, setGuardMode, type GuardMode } from './guard.ts';
 import { setTvStartConfig, tvStartConfig, type TvStartConfig } from './tvstart.ts';
 import { speakerList } from './speakers.ts';
@@ -181,6 +182,19 @@ app.post<{ Body: { name?: string } }>('/api/snapshots', async (req, reply) => {
   return snapshots.create(name, await captureSnapshot());
 });
 
+// Store a snapshot from its data (e.g. one made in the iOS app). 409 if the name is taken.
+app.post<{ Body: { name?: string; data?: unknown } }>('/api/snapshots/import', async (req, reply) => {
+  const name = cleanName(req.body?.name);
+  const data = validateSnapshot(req.body?.data);
+  if (snapshots.list().some((s) => s.name.toLowerCase() === name.toLowerCase())) {
+    throw Object.assign(new Error(`A snapshot named "${name}" exists`), { statusCode: 409 });
+  }
+  const created = snapshots.create(name, data);
+  reconcileAirplay();
+  reply.code(201);
+  return created;
+});
+
 app.patch<{ Params: { id: string }; Body: { name?: string } }>('/api/snapshots/:id', async (req) => {
   findSnapshot(req.params.id);
   return snapshots.update(Number(req.params.id), { name: cleanName(req.body?.name) });
@@ -266,5 +280,6 @@ if (!airplayAvailable()) app.log.warn('shairport-sync not found, AirPlay receive
 startLsdp((msg) => app.log.warn(msg));
 seedGuard();
 startMonitor((msg) => app.log.warn(msg), scheduleRefresh);
+startMdns(Number(process.env.PORT ?? 8095), (msg) => app.log.warn(msg));
 captureSnapshot().then(afterRead).catch((e) => app.log.warn(`Initial read failed: ${e.message}`));
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { stopAllAirplay(); process.exit(0); });

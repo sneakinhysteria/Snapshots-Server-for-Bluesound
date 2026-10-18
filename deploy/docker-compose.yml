@@ -1,9 +1,9 @@
 # Example compose file. On Unraid see README "Unraid".
 services:
-  bluesound-snapshot:
-    image: ghcr.io/sneakinhysteria/bluesound-snapshots:latest
+  snapshots-server-for-bluesound:
+    image: ghcr.io/sneakinhysteria/snapshots-server-for-bluesound:latest
     # To build locally instead: build: .
-    container_name: bluesound-snapshot
+    container_name: snapshots-server-for-bluesound
     # Host networking is required: speaker discovery (LSDP broadcast, subnet scan),
     # AirPlay (mDNS, PTP ports 319/320) and the audio streams the speakers fetch.
     network_mode: host

@@ -17,7 +17,7 @@ else
   if [ -n "$IFACES" ]; then
     sed -i "s/^#\?allow-interfaces=.*/allow-interfaces=$IFACES/" /etc/avahi/avahi-daemon.conf
   fi
-  sed -i "s/^#\?host-name=.*/host-name=${AVAHI_HOSTNAME:-bluesound-snapshots}/" /etc/avahi/avahi-daemon.conf
+  sed -i "s/^#\?host-name=.*/host-name=${AVAHI_HOSTNAME:-snapshots-server-for-bluesound}/" /etc/avahi/avahi-daemon.conf
   avahi-daemon --daemonize --no-chroot
 fi
 

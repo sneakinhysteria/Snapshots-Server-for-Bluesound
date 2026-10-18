@@ -1,4 +1,4 @@
-# Bluesound Snapshots
+# Snapshots Server for Bluesound
 
 Store and recall BluOS speaker setups with one button. BluOS lets a speaker belong to only one fixed group, so switching between, for example, a home cinema (soundbar + surrounds + sub) and a stereo pair (two speakers + sub) normally means rebuilding groups in the BluOS app. This app snapshots each setup once and recreates it on demand.
 
@@ -26,8 +26,8 @@ Setups are built in the BluOS app; this app only stores and recreates them.
 ## Install with Docker Compose
 
 ```sh
-mkdir bluesound-snapshot && cd bluesound-snapshot
-curl -O https://raw.githubusercontent.com/sneakinhysteria/BluesoundSnapshots/main/deploy/docker-compose.yml
+mkdir snapshots-server-for-bluesound && cd snapshots-server-for-bluesound
+curl -O https://raw.githubusercontent.com/sneakinhysteria/Snapshots-Server-for-Bluesound/main/deploy/docker-compose.yml
 docker compose up -d
 ```
 
@@ -37,8 +37,8 @@ Open `http://<host>:8095`.
 
 **Option A — Docker template (no plugins)**
 
-1. Copy [`unraid/bluesound-snapshot.xml`](unraid/bluesound-snapshot.xml) to `/boot/config/plugins/dockerMan/templates-user/my-bluesound-snapshot.xml` on the flash drive (e.g. via the Unraid terminal: `wget -O /boot/config/plugins/dockerMan/templates-user/my-bluesound-snapshot.xml https://raw.githubusercontent.com/sneakinhysteria/BluesoundSnapshots/main/unraid/bluesound-snapshot.xml`).
-2. **Docker** tab → **Add Container** → **Template**: select *bluesound-snapshot* under *User templates*.
+1. Copy [`unraid/snapshots-server-for-bluesound.xml`](unraid/snapshots-server-for-bluesound.xml) to `/boot/config/plugins/dockerMan/templates-user/my-snapshots-server-for-bluesound.xml` on the flash drive (e.g. via the Unraid terminal: `wget -O /boot/config/plugins/dockerMan/templates-user/my-snapshots-server-for-bluesound.xml https://raw.githubusercontent.com/sneakinhysteria/Snapshots-Server-for-Bluesound/main/unraid/snapshots-server-for-bluesound.xml`).
+2. **Docker** tab → **Add Container** → **Template**: select *snapshots-server-for-bluesound* under *User templates*.
 3. Check the values (Network Type **Host**, AppData path, port) and click **Apply**.
 4. Open the WebUI from the container's icon menu.
 
@@ -48,20 +48,20 @@ Docker tab → Add Container, then set:
 
 | Field | Value |
 |---|---|
-| Name | `bluesound-snapshot` |
-| Repository | `ghcr.io/sneakinhysteria/bluesound-snapshots:latest` |
+| Name | `snapshots-server-for-bluesound` |
+| Repository | `ghcr.io/sneakinhysteria/snapshots-server-for-bluesound:latest` |
 | Network Type | `Host` |
 | WebUI | `http://[IP]:[PORT:8095]/` |
-| Path `/data` | `/mnt/user/appdata/bluesound-snapshot` |
+| Path `/data` | `/mnt/user/appdata/snapshots-server-for-bluesound` |
 | Path `/var/run/dbus` | `/var/run/dbus` (host's D-Bus, for AirPlay announcements) |
 | Variable `PORT` | `8095` |
 | Variable `TZ` | your time zone, e.g. `Europe/Berlin` |
 
 **Option C — Compose Manager plugin**
 
-1. Docker tab → *Compose* section → **Add New Stack**, name it `bluesound-snapshots`.
+1. Docker tab → *Compose* section → **Add New Stack**, name it `snapshots-server-for-bluesound`.
 2. *Edit Stack* → *Compose File*: paste [`unraid/compose-manager/docker-compose.yml`](unraid/compose-manager/docker-compose.yml) (adjust `TZ`).
-3. *Edit Stack* → *UI Labels*: icon `https://raw.githubusercontent.com/sneakinhysteria/BluesoundSnapshots/main/public/icon.png`, WebUI `http://<server-ip>:8095` — or paste [`unraid/compose-manager/docker-compose.override.yml`](unraid/compose-manager/docker-compose.override.yml) as override with your server IP.
+3. *Edit Stack* → *UI Labels*: icon `https://raw.githubusercontent.com/sneakinhysteria/Snapshots-Server-for-Bluesound/main/public/icon.png`, WebUI `http://<server-ip>:8095` — or paste [`unraid/compose-manager/docker-compose.override.yml`](unraid/compose-manager/docker-compose.override.yml) as override with your server IP.
 4. **Compose Up**. Updates: *Update Stack*.
 
 Tip: give the speakers fixed addresses (DHCP reservations) in your router. The app identifies speakers by MAC address and finds them again anyway, but other integrations (e.g. Home Assistant) may be configured by IP.
@@ -78,10 +78,14 @@ All settings are optional; defaults are detected automatically.
 | `BLUOS_SCAN` | on | `off` disables the subnet scan (LSDP and known addresses only) |
 | `PUBLIC_URL` | auto | Base URL the speakers use to fetch streams from this app, e.g. `http://192.168.1.10:8095` |
 | `AVAHI_INTERFACES` | default-route interface | Own Avahi only: interfaces AirPlay receivers are announced on, e.g. `br0` |
-| `AVAHI_HOSTNAME` | `bluesound-snapshots` | Own Avahi only: mDNS host name of the container |
+| `AVAHI_HOSTNAME` | `snapshots-server-for-bluesound` | Own Avahi only: mDNS host name of the container |
+| `MDNS` | on | `off` stops announcing the server via mDNS (`_bluossnapshots._tcp`) |
+| `MDNS_NAME` | `Snapshots Server for Bluesound on <host>` | Name the server is announced under |
+| `DATA_DIR` | `/data` | Database location |
 
 **AirPlay announcements**: mount the host's D-Bus (`/var/run/dbus:/var/run/dbus`, included in the compose file and Unraid template) so the receivers are announced by the host's Avahi. With host networking, a second Avahi inside the container fights the host's one over the address records; both rename themselves ("Server-2", "-3", …) until the host's stops answering. If that happened, restart the host's Avahi (Unraid: `/etc/rc.d/rc.avahidaemon restart`). Without the mount (hosts without Avahi) the container runs its own.
-| `DATA_DIR` | `/data` | Database location |
+
+**Server announcement**: the server announces itself as `_bluossnapshots._tcp` on its port, with TXT records `version=<commit>` and `path=/api`, so apps on the network find it without an address.
 
 **Discovery**: players are found via LSDP (the Bluesound broadcast protocol, UDP 11430), previously known addresses, group members reported by their leader, and a scan of the host's local subnets. Some devices (1st-gen Pulse Flex, Pulse Sub+) don't announce themselves via LSDP or mDNS and are only found by the scan. Docker, VM and VPN interfaces are ignored.
 
@@ -225,6 +229,7 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 | GET | `/api/current[?cached=1]` | Current setup (+ ids of matching snapshots); `cached=1` returns the last stored read |
 | GET | `/api/snapshots` | List snapshots |
 | POST | `/api/snapshots` `{name}` | Save current setup |
+| POST | `/api/snapshots/import` `{name, data}` | Store a snapshot from its data (same format as `data` in the list); 201, or 409 if the name exists |
 | PATCH | `/api/snapshots/:id` `{name}` | Rename |
 | PUT | `/api/snapshots/:id/values` `{zones}` | Edit stored values |
 | POST | `/api/snapshots/:id/capture` | Replace with current setup |
@@ -246,5 +251,5 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 npm install
 npm run dev        # Node ≥ 22.18, runs TypeScript directly
 npm run typecheck
-docker build -t bluesound-snapshot .
+docker build -t snapshots-server-for-bluesound .
 ```

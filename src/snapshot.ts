@@ -7,7 +7,7 @@ import {
 } from './bluos.ts';
 import { discover } from './discovery.ts';
 import { devices, events, kv } from './store.ts';
-import { readSettings, type StoredSetting } from './settings.ts';
+import { readSettings, SKIPPED_SETTINGS, type StoredSetting } from './settings.ts';
 
 export interface SnapshotMember {
   mac: string;
@@ -220,6 +220,79 @@ export function applyEdits(snapshot: Snapshot, edits: ZoneEdit[]): Snapshot {
     }
   }
   return next;
+}
+
+const MAC = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
+const CHANNELS = new Set(['front', 'left', 'right', 'side_left', 'side_right', 'rear_left', 'rear_right']);
+const str = (v: unknown, what: string, max = 100) => {
+  if (typeof v !== 'string' || v.length > max) throw bad(`${what} must be a text of at most ${max} characters`);
+  return v;
+};
+const mac = (v: unknown, what: string) => {
+  const m = str(v, what).toUpperCase();
+  if (!MAC.test(m)) throw bad(`${what} is not a MAC address`);
+  return m;
+};
+const optNum = (v: unknown, min: number, max: number, what: string) => (v === undefined || v === null ? undefined : checkNum(v, min, max, what));
+
+const META_TYPES = new Set(['boolean', 'list', 'range', 'dual-range']);
+function cleanMeta(m: any, at: string): StoredSetting['meta'] {
+  if (!m || typeof m !== 'object') return undefined;
+  if (!META_TYPES.has(m.type)) throw bad(`${at}: unknown setting type ${m.type}`);
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const options = Array.isArray(m.options)
+    ? m.options.slice(0, 100).map((o: any) => ({ value: str(o?.value, `${at}: option`, 50), label: str(o?.label ?? o?.value, `${at}: option label`) }))
+    : undefined;
+  return { type: m.type, options, min: n(m.min), max: n(m.max), step: n(m.step) };
+}
+
+/** Validates snapshot data from outside (import) and returns a clean copy with only known fields. */
+export function validateSnapshot(input: unknown): Snapshot {
+  const d = input as any;
+  if (!d || typeof d !== 'object' || d.version !== 1 || !Array.isArray(d.zones) || !d.zones.length) throw bad('data must be a snapshot (version 1 with zones)');
+  if (d.zones.length > 20) throw bad('Too many zones');
+  const seen = new Set<string>();
+  const once = (m: string) => { if (seen.has(m)) throw bad(`Speaker ${m} appears more than once`); seen.add(m); return m; };
+  const zones: SnapshotZone[] = d.zones.map((z: any, i: number) => {
+    const at = `Zone ${i + 1}`;
+    if (!z || typeof z !== 'object' || !z.leader || !z.volume) throw bad(`${at}: leader and volume are required`);
+    const members = Array.isArray(z.members) ? z.members : [];
+    const slaves = Array.isArray(z.dynamicSlaves) ? z.dynamicSlaves : [];
+    const settings = Array.isArray(z.settings) ? z.settings : [];
+    if (members.length > 10 || slaves.length > 20 || settings.length > 300) throw bad(`${at}: too many entries`);
+    const level = checkNum(z.volume.level, 0, 100, `${at}: volume`);
+    const zone: SnapshotZone = {
+      leader: {
+        mac: once(mac(z.leader.mac, `${at}: leader MAC`)), name: str(z.leader.name, `${at}: leader name`), model: str(z.leader.model ?? '', `${at}: leader model`),
+        channelMode: z.leader.channelMode === undefined ? undefined : str(z.leader.channelMode, `${at}: leader channel`, 20),
+        distance: optNum(z.leader.distance, 0, 30, `${at}: leader distance`),
+      },
+      groupName: z.groupName === undefined || z.groupName === null ? undefined : str(z.groupName, `${at}: group name`),
+      members: members.map((m: any) => {
+        if (!CHANNELS.has(m?.channelMode)) throw bad(`${at}: unknown channel ${m?.channelMode}`);
+        return {
+          mac: once(mac(m.mac, `${at}: member MAC`)), name: str(m.name, `${at}: member name`), model: str(m.model ?? '', `${at}: member model`),
+          channelMode: m.channelMode, distance: optNum(m.distance, 0, 30, `${at}: distance`), levelDb: checkNum(m.levelDb ?? 0, -10, 10, `${at}: level`),
+        };
+      }),
+      sub: z.sub ? { mac: once(mac(z.sub.mac, `${at}: sub MAC`)), name: str(z.sub.name, `${at}: sub name`), levelDb: checkNum(z.sub.levelDb ?? 0, -10, 10, `${at}: sub level`) } : undefined,
+      dynamicSlaves: slaves.map((x: any) => ({ mac: once(mac(x?.mac, `${at}: grouped speaker MAC`)), name: str(x.name, `${at}: grouped speaker name`) })),
+      volume: z.volume.mute ? { level: 0, mute: true, muteLevel: checkNum(z.volume.muteLevel ?? level, 0, 100, `${at}: volume`) } : { level, mute: false },
+      settings: settings.map((x: any) => {
+        const st: StoredSetting = {
+          owner: mac(x?.owner, `${at}: setting owner`), ownerName: str(x.ownerName ?? '', `${at}: setting owner name`),
+          name: str(x.name, `${at}: setting name`, 50), label: str(x.label ?? x.name, `${at}: setting label`), value: '',
+          meta: cleanMeta(x.meta, at),
+        };
+        if (SKIPPED_SETTINGS.has(st.name)) throw bad(`${at}: setting ${st.name} cannot be stored`);
+        st.value = checkSetting(st, x.value);
+        return st;
+      }),
+    };
+    if (z.airplayName) zone.airplayName = str(z.airplayName, `${at}: AirPlay name`, 50).trim() || undefined;
+    return zone;
+  });
+  return { version: 1, capturedAt: typeof d.capturedAt === 'string' && !isNaN(Date.parse(d.capturedAt)) ? d.capturedAt : new Date().toISOString(), zones };
 }
 
 /** Keeps user-set values that a fresh capture does not contain (AirPlay names). */

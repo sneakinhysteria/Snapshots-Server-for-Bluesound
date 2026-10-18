@@ -1,13 +1,13 @@
 services:
-  bluesound-snapshot:
-    image: ghcr.io/sneakinhysteria/bluesound-snapshots:latest
-    container_name: bluesound-snapshot
+  snapshots-server-for-bluesound:
+    image: ghcr.io/sneakinhysteria/snapshots-server-for-bluesound:latest
+    container_name: snapshots-server-for-bluesound
     network_mode: host
     environment:
       PORT: "8095"
       TZ: "Europe/Berlin"
     volumes:
-      - /mnt/user/appdata/bluesound-snapshot:/data
+      - /mnt/user/appdata/snapshots-server-for-bluesound:/data
       # Host's D-Bus: the host's Avahi announces the AirPlay receivers.
       - /var/run/dbus:/var/run/dbus
     restart: unless-stopped

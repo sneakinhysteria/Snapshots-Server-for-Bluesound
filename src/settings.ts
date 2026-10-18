@@ -32,7 +32,7 @@ interface LiveSetting extends StoredSetting {
 const WRITABLE = new Set(['boolean', 'list', 'range', 'dual-range']);
 // db: member balance / sub trim, handled through /SlaveVolume levels.
 // I3DDisable: toggling Spatial Audio triggers a firmware upgrade on the player.
-const EXCLUDED = new Set(['db', 'I3DDisable', 'reset', 'unpair', 'swaplr', 'ungroup']);
+export const SKIPPED_SETTINGS = new Set(['db', 'I3DDisable', 'reset', 'unpair', 'swaplr', 'ungroup']);
 const PAGES = /^(audio|subw|zone|zone_player-.+)$/;
 
 // Settings use both a value attribute and <value> child elements, so attributes get a prefix here.
@@ -79,7 +79,7 @@ function collect(node: any, inheritedUrl: string | undefined, leaderHost: string
   for (const item of [...asArray(node.menuGroup), ...asArray(node.setting)]) {
     const url = item['@url'] ?? inheritedUrl;
     const name = item['@name'];
-    if (name && WRITABLE.has(item['@class']) && !EXCLUDED.has(name) && item['@readonly'] !== 'true' && url && item['@value'] !== undefined) {
+    if (name && WRITABLE.has(item['@class']) && !SKIPPED_SETTINGS.has(name) && item['@readonly'] !== 'true' && url && item['@value'] !== undefined) {
       out.push({ name, label: item['@displayName'] ?? name, value: String(item['@value']), meta: metaOf(item), ...target(url, leaderHost) });
     }
     collect(item, url, leaderHost, out);
