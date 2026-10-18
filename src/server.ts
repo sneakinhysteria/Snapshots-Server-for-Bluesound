@@ -9,6 +9,7 @@ import { cover, nowPlaying, nowPlayingBus, type NowPlaying } from './metadata.ts
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
 import { startMdns } from './mdns.ts';
+import { restartSpeaker } from './restart.ts';
 import { guardInfo, seedGuard, setGuardMode, type GuardMode } from './guard.ts';
 import { setTvStartConfig, tvStartConfig, type TvStartConfig } from './tvstart.ts';
 import { speakerList } from './speakers.ts';
@@ -91,6 +92,11 @@ app.get<{ Querystring: { scan?: string } }>('/api/speakers', async (req) => {
     afterRead(await captureSnapshot(lan));
   }
   return { subnets: scanSubnets(), scan: process.env.BLUOS_SCAN !== 'off', speakers: speakerList(latest.current) };
+});
+
+app.post<{ Params: { mac: string } }>('/api/speakers/:mac/restart', async (req, reply) => {
+  reply.code(202);
+  return restartSpeaker(decodeURIComponent(req.params.mac));
 });
 
 // Live activity log (Server-Sent Events).

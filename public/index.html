@@ -561,6 +561,7 @@ async function loadSpeakers(scan = false) {
         <td>${esc(p.role)}<div class="sub">${esc(p.ip)} · ${esc(p.mac)}</div></td>
         <td>${p.via ? `Direct Connect via ${esc(p.via)}` : 'LAN'}
           <div class="sub">${p.reachable ? 'found via ' + esc(p.foundBy || 'known address') : 'last seen ' + timeAgo(p.lastSeen)}</div></td>
+        <td>${p.reachable && !p.via ? `<button class="small" data-restart="${esc(p.mac)}" data-name="${esc(p.name)}">Restart</button>` : ''}</td>
       </tr>`).join('')}</table></div>`;
     }
     $('#scanInfo').textContent = r.scan
@@ -584,11 +585,19 @@ document.querySelector('.tabs').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab);
 });
 $('#scan').addEventListener('click', () => { showError(null); loadSpeakers(true); });
+$('#speakers').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-restart]'); if (!b) return;
+  if (!confirm(`Restart ${b.dataset.name}? It stops playing for about a minute.`)) return;
+  showError(null);
+  b.disabled = true; b.textContent = 'Restarting…';
+  try { await api('POST', `/api/speakers/${encodeURIComponent(b.dataset.restart)}/restart`); }
+  catch (e) { showError(e); b.disabled = false; b.textContent = 'Restart'; }
+});
 
 const eventLine = (e) => {
   const t = new Date(e.t);
-  const kind = { volume: 'Volume', playback: 'Playback', guard: 'Guard', group: 'Group' }[e.kind] || e.kind;
-  return `<div class="${e.kind === 'guard' || e.kind === 'group' ? 'warn' : ''}">${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${kind}: ${esc(e.detail)}</div>`;
+  const kind = { volume: 'Volume', playback: 'Playback', guard: 'Guard', group: 'Group', restart: 'Restart' }[e.kind] || e.kind;
+  return `<div class="${['guard', 'group', 'restart'].includes(e.kind) ? 'warn' : ''}">${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${kind}: ${esc(e.detail)}</div>`;
 };
 
 async function loadEvents() {

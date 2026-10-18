@@ -242,6 +242,7 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 | GET/PUT | `/api/tvstart` | Volume when the TV starts / `{"mode": "off\|fixed\|max", "level", "inputs"}` |
 | GET | `/api/airplay` | AirPlay receivers |
 | GET | `/api/speakers[?scan=1]` | Speaker list (`scan=1` runs a full discovery) |
+| POST | `/api/speakers/:mac/restart` | Restart a speaker (202; 409 while a recall runs, when it doesn't respond, or when it is only reachable through a soundbar) |
 | POST | `/api/recall/<name>` | Recall by name (see *Automation*) |
 | GET | `/api/state` | Active snapshot, names, last recall (see *Automation*) |
 
