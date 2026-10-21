@@ -43,15 +43,25 @@ const CHANNEL: Record<string, string> = {
 };
 
 /** Each speaker's place in a setup, e.g. 'right surround in "Home Theater"'. */
-function roles(s: Snapshot): Map<string, string> {
+export function roles(s: Snapshot): Map<string, string> {
   const out = new Map<string, string>();
   for (const z of s.zones) {
-    const label = `"${z.groupName ?? z.leader.name}"`;
-    const grouped = z.members.length || z.sub || z.dynamicSlaves.length;
-    out.set(z.leader.mac, grouped ? `leader of ${label}` : 'standalone');
-    for (const m of z.members) out.set(m.mac, `${CHANNEL[m.channelMode] ?? 'member'} in ${label}`);
-    if (z.sub) out.set(z.sub.mac, `subwoofer in ${label}`);
-    for (const d of z.dynamicSlaves) out.set(d.mac, `grouped with ${label}`);
+    if (z.groupName || z.members.length) {
+      // Fixed group (stereo pair, home cinema): the group has a name of its own.
+      const label = `"${z.groupName ?? z.leader.name}"`;
+      out.set(z.leader.mac, `leader of ${label}`);
+      for (const m of z.members) out.set(m.mac, `${CHANNEL[m.channelMode] ?? 'member'} in ${label}`);
+      if (z.sub) out.set(z.sub.mac, `subwoofer in ${label}`);
+    } else {
+      // A single player, possibly with a paired sub: name the speakers, not a group.
+      const extras = [
+        z.sub && `with subwoofer ${z.sub.name}`,
+        z.dynamicSlaves.length && `grouped with ${z.dynamicSlaves.map((d) => d.name).join(', ')}`,
+      ].filter(Boolean);
+      out.set(z.leader.mac, ['standalone', ...extras].join(', '));
+      if (z.sub) out.set(z.sub.mac, `subwoofer of ${z.leader.name}`);
+    }
+    for (const d of z.dynamicSlaves) out.set(d.mac, `grouped with "${z.groupName ?? z.leader.name}"`);
   }
   return out;
 }
