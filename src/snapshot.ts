@@ -314,6 +314,26 @@ export function carryOver(previous: Snapshot, fresh: Snapshot): Snapshot {
   return fresh;
 }
 
+/** Updates speaker names in a stored snapshot to the given current names (by MAC); group names stay. */
+export function refreshNames(stored: Snapshot, names: Map<string, string>): Snapshot | undefined {
+  let changed = false;
+  const fix = (o: { mac: string; name: string }) => {
+    const n = names.get(o.mac);
+    if (n && n !== o.name) { o.name = n; changed = true; }
+  };
+  for (const z of stored.zones) {
+    fix(z.leader);
+    z.members.forEach(fix);
+    if (z.sub) fix(z.sub);
+    z.dynamicSlaves.forEach(fix);
+    for (const st of z.settings) {
+      const n = names.get(st.owner);
+      if (n && n !== st.ownerName) { st.ownerName = n; changed = true; }
+    }
+  }
+  return changed ? stored : undefined;
+}
+
 /** Adds missing setting metadata (allowed values) to stored snapshots from a live read. */
 export function backfillMeta(stored: Snapshot, live: Snapshot): Snapshot | undefined {
   const liveMeta = new Map(live.zones.flatMap((z) => z.settings).filter((s) => s.meta).map((s) => [`${s.owner}|${s.name}`, s.meta!]));

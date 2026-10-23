@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { join } from 'node:path';
-import { applyEdits, validateSnapshot, backfillMeta, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
+import { applyEdits, validateSnapshot, backfillMeta, refreshNames, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
 import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirplay, setAirplayLogger, stopAllAirplay } from './airplay.ts';
 import { registerStreams } from './stream.ts';
 import { versionInfo } from './version.ts';
@@ -52,9 +52,11 @@ const cleanName = (name: unknown) => {
 function afterRead(current: Snapshot) {
   setLatest(current);
   reconcileAirplay(current);
+  const names = new Map(devices.list().map((d) => [d.mac, d.name]));
   for (const s of snapshots.list()) {
     const filled = backfillMeta(s.data, current);
-    if (filled) snapshots.update(s.id, { data: filled }, false);
+    const renamed = refreshNames(filled ?? s.data, names);
+    if (filled || renamed) snapshots.update(s.id, { data: renamed ?? filled }, false);
   }
 }
 
