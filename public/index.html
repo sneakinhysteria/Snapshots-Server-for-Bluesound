@@ -119,7 +119,7 @@
     </div>
 
     <div id="zonesBlock" hidden>
-      <div class="section-head"><h2>Inputs</h2></div>
+      <div class="section-head"><h2>Inputs and volume</h2></div>
       <div id="zones"></div>
     </div>
 
@@ -632,8 +632,8 @@ function zoneCard(z) {
   const level = z.volume.mute ? (z.volume.muteLevel ?? z.volume.level) : z.volume.level;
   return `<div class="card" ${zm}>
     <div class="name">${esc(z.title)}</div>
-    <div class="inputs">${z.inputs.map((i) => `<button ${zm} data-input="${esc(i.id)}" class="${i.id === z.playingInputId ? 'on' : ''}">
-      <span>${esc(i.name)}</span><span class="sub">${esc(i.connector)}</span></button>`).join('')}</div>
+    ${z.inputs.length ? `<div class="inputs">${z.inputs.map((i) => `<button ${zm} data-input="${esc(i.id)}" class="${i.id === z.playingInputId ? 'on' : ''}">
+      <span>${esc(i.name)}</span><span class="sub">${esc(i.connector)}</span></button>`).join('')}</div>` : ''}
     <div class="volume">
       <button class="small" ${zm} data-mute="${z.volume.mute ? '0' : '1'}">${z.volume.mute ? 'Unmute' : 'Mute'}</button>
       <input type="range" min="0" max="100" step="1" value="${level}" ${zm} data-volume aria-label="Volume ${esc(z.title)}">
@@ -645,7 +645,7 @@ function zoneCard(z) {
 async function loadZones() {
   if (dragging) return;
   try {
-    const zones = (await api('GET', '/api/zones')).filter((z) => z.inputs.length);
+    const zones = await api('GET', '/api/zones');
     $('#zonesBlock').hidden = !zones.length;
     if (!dragging) $('#zones').innerHTML = zones.map(zoneCard).join('');
   } catch {}
