@@ -66,6 +66,13 @@
   .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 12px; color: var(--muted); white-space: nowrap; }
   .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
   .table-scroll { overflow-x: auto; }
+  .inputs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .inputs button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 120px; }
+  .inputs button .sub { color: var(--muted); font-size: .78rem; }
+  .inputs button.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .volume { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .volume input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); padding: 0; border: none; background: none; }
+  .volume .level { width: 2.5em; text-align: right; font-variant-numeric: tabular-nums; }
   .speaker-table td { padding: 10px 16px 10px 0; vertical-align: top; }
   .speaker-table td:first-child { width: auto; }
   .speaker-table td.dot-cell { width: 14px; padding-right: 6px; padding-top: 15px; }
@@ -109,6 +116,11 @@
         <input id="saveName" class="grow" placeholder="Snapshot name, e.g. Home Cinema" autocomplete="off" required>
         <button class="primary" type="submit">Save</button>
       </form>
+    </div>
+
+    <div id="zonesBlock" hidden>
+      <div class="section-head"><h2>Inputs</h2></div>
+      <div id="zones"></div>
     </div>
 
     <div class="section-head"><h2>Snapshots</h2></div>
@@ -418,6 +430,7 @@ async function follow(job) {
   renderJob(job);
   busy = false;
   await Promise.all([loadSnapshots(), loadCurrent()]);
+  loadZones();
 }
 
 $('#snapshots').addEventListener('click', async (ev) => {
@@ -578,6 +591,7 @@ function showTab(name) {
   for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
   for (const p of document.querySelectorAll('[data-panel]')) p.hidden = p.dataset.panel !== name;
   try { localStorage.setItem('tab', name); } catch {}
+  if (name === 'snapshots' && typeof loadZones === 'function') loadZones();
   if (name === 'speakers') loadSpeakers();
   if (name === 'helpers') { loadAirplay(); loadGuard(); loadTvStart(); }
   if (name === 'activity') loadEvents();
@@ -611,11 +625,65 @@ async function loadEvents() {
   } catch (e) { $('#events').textContent = e.message; }
 }
 
+// ---- Inputs and volume (per zone; same order and content as the iOS/tvOS apps) ----
+let dragging = false;
+function zoneCard(z) {
+  const zm = `data-zone="${esc(z.mac)}"`;
+  const level = z.volume.mute ? (z.volume.muteLevel ?? z.volume.level) : z.volume.level;
+  return `<div class="card" ${zm}>
+    <div class="name">${esc(z.title)}</div>
+    <div class="inputs">${z.inputs.map((i) => `<button ${zm} data-input="${esc(i.id)}" class="${i.id === z.playingInputId ? 'on' : ''}">
+      <span>${esc(i.name)}</span><span class="sub">${esc(i.connector)}</span></button>`).join('')}</div>
+    <div class="volume">
+      <button class="small" ${zm} data-mute="${z.volume.mute ? '0' : '1'}">${z.volume.mute ? 'Unmute' : 'Mute'}</button>
+      <input type="range" min="0" max="100" step="1" value="${level}" ${zm} data-volume aria-label="Volume ${esc(z.title)}">
+      <span class="level">${level}</span>
+    </div>
+    <div class="meta" style="margin-top:8px">${esc(z.playing)}${z.volume.mute ? ' · muted' : ''}</div>
+  </div>`;
+}
+async function loadZones() {
+  if (dragging) return;
+  try {
+    const zones = (await api('GET', '/api/zones')).filter((z) => z.inputs.length);
+    $('#zonesBlock').hidden = !zones.length;
+    if (!dragging) $('#zones').innerHTML = zones.map(zoneCard).join('');
+  } catch {}
+}
+let zonesTimer;
+const reloadZonesSoon = () => { clearTimeout(zonesTimer); zonesTimer = setTimeout(loadZones, 600); };
+setInterval(() => { if (!document.hidden && !$('[data-panel="snapshots"]').hidden) loadZones(); }, 15_000);
+$('#zones').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-input],[data-mute]'); if (!b) return;
+  showError(null); b.disabled = true;
+  try {
+    if (b.dataset.input) await api('POST', `/api/zones/${encodeURIComponent(b.dataset.zone)}/input`, { id: b.dataset.input });
+    else await api('PUT', `/api/zones/${encodeURIComponent(b.dataset.zone)}/volume`, { mute: b.dataset.mute === '1' });
+  } catch (e) { showError(e); }
+  loadZones();
+});
+let volTimer;
+$('#zones').addEventListener('input', (ev) => {
+  const r = ev.target.closest('[data-volume]'); if (!r) return;
+  dragging = true;
+  r.nextElementSibling.textContent = r.value;
+  clearTimeout(volTimer);
+  volTimer = setTimeout(async () => {
+    try { await api('PUT', `/api/zones/${encodeURIComponent(r.dataset.zone)}/volume`, { level: Number(r.value) }); }
+    catch (e) { showError(e); }
+  }, 200);
+});
+$('#zones').addEventListener('change', (ev) => {
+  if (!ev.target.closest('[data-volume]')) return;
+  setTimeout(() => { dragging = false; loadZones(); }, 800);
+});
+
 // New entries arrive live; the periodic reload covers dropped connections.
 function liveEvents() {
   const es = new EventSource('/api/events/stream');
   es.onmessage = (msg) => {
     const e = JSON.parse(msg.data);
+    if (['volume', 'playback', 'group'].includes(e.kind)) reloadZonesSoon();
     if ($('#volOnly').checked && !['volume', 'guard'].includes(e.kind)) return;
     if (e.kind === 'guard' && !$('[data-panel="helpers"]').hidden) loadGuard();
     const el = $('#events');
@@ -647,6 +715,7 @@ $('#save').addEventListener('submit', async (ev) => {
   } catch (e) { showError(e); }
   await loadCurrent(false);
   renderSnapshots();
+  loadZones();
   loadCurrent();
   loadVersion();
 })();

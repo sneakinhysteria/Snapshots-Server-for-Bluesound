@@ -10,6 +10,7 @@ import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
 import { startMdns } from './mdns.ts';
 import { restartSpeaker } from './restart.ts';
+import { selectInput, setGroupVolume, zoneControls } from './inputs.ts';
 import { guardInfo, seedGuard, setGuardMode, type GuardMode } from './guard.ts';
 import { setTvStartConfig, tvStartConfig, type TvStartConfig } from './tvstart.ts';
 import { speakerList } from './speakers.ts';
@@ -98,6 +99,13 @@ app.post<{ Params: { mac: string } }>('/api/speakers/:mac/restart', async (req, 
   reply.code(202);
   return restartSpeaker(decodeURIComponent(req.params.mac));
 });
+
+// Inputs and group volume per zone (leader MAC).
+app.get('/api/zones', async () => zoneControls());
+app.post<{ Params: { mac: string }; Body: { id?: string } }>('/api/zones/:mac/input', async (req) =>
+  selectInput(decodeURIComponent(req.params.mac), String(req.body?.id ?? '')));
+app.put<{ Params: { mac: string }; Body: { level?: number; mute?: boolean } }>('/api/zones/:mac/volume', async (req) =>
+  setGroupVolume(decodeURIComponent(req.params.mac), req.body ?? {}));
 
 // Live activity log (Server-Sent Events).
 app.get('/api/events/stream', (req, reply) => {

@@ -241,6 +241,9 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 | GET/PUT | `/api/guard` | CEC volume protection: status and learned patterns / `{"mode": "off\|detect\|undo\|lock"}` |
 | GET/PUT | `/api/tvstart` | Volume when the TV starts / `{"mode": "off\|fixed\|max", "level", "inputs"}` |
 | GET | `/api/airplay` | AirPlay receivers |
+| GET | `/api/zones` | Inputs, playing input and group volume per zone (group leader or single speaker) |
+| POST | `/api/zones/:mac/input` `{id}` | Switch a zone to an input |
+| PUT | `/api/zones/:mac/volume` `{level?, mute?}` | Set group volume / mute |
 | GET | `/api/speakers[?scan=1]` | Speaker list (`scan=1` runs a full discovery) |
 | POST | `/api/speakers/:mac/restart` | Restart a speaker (202; 409 while a recall runs, when it doesn't respond, or when it is only reachable through a soundbar) |
 | POST | `/api/recall/<name>` | Recall by name (see *Automation*) |
