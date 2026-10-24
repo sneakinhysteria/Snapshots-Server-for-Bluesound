@@ -2,7 +2,7 @@
 // because home cinema members change IP (they move to the soundbar's private subnet).
 
 import {
-  getSlaveLevel, getVolume, memberSyncStatus,
+  BLUOS_PORT, getSlaveLevel, getVolume, memberSyncStatus,
   type SyncStatus, type VolumeState,
 } from './bluos.ts';
 import { discover } from './discovery.ts';
@@ -15,14 +15,14 @@ export interface SnapshotMember {
   model: string;
   channelMode: string;
   distance?: number;
-  levelDb: number;
+  levelDb?: number;   // undefined when the leader didn't answer /SlaveVolume
 }
 
 export interface SnapshotZone {
   leader: { mac: string; name: string; model: string; channelMode?: string; distance?: number };
   groupName?: string;                       // fixed group name (e.g. "Stereo", "Living Room")
   members: SnapshotMember[];                // fixed group members (stereo partner, surrounds)
-  sub?: { mac: string; name: string; levelDb: number };
+  sub?: { mac: string; name: string; levelDb?: number };
   dynamicSlaves: { mac: string; name: string }[];
   volume: VolumeState;
   settings: StoredSetting[];                // audio/sub settings of all speakers in the zone
@@ -85,7 +85,9 @@ export interface Snapshot {
 }
 
 export async function resolveMac(leader: SyncStatus, m: { id: string; port: number; name?: string }, lan: Map<string, SyncStatus>) {
-  for (const p of lan.values()) if (p.host === m.id) return { mac: p.mac, name: p.name, model: p.modelName };
+  // Discovery only reads port 11000. A member on another port of the same address is a different
+  // player (a NAD CI580 hosts four, on 11000, 11010, 11020 and 11030), so ask its leader instead.
+  for (const p of lan.values()) if (p.host === m.id && m.port === BLUOS_PORT) return { mac: p.mac, name: p.name, model: p.modelName };
   try {
     const s = await memberSyncStatus(leader.host, m);
     if (s.mac) {
@@ -126,7 +128,8 @@ async function captureZone(leader: SyncStatus, lan: Map<string, SyncStatus>): Pr
 
   for (const m of leader.members) {
     const id = await resolveMac(leader, m, lan);
-    const levelDb = await getSlaveLevel(leader.host, m).catch(() => 0);
+    // A failed read is not 0 dB: storing 0 would make the next recall overwrite the real trim.
+    const levelDb = await getSlaveLevel(leader.host, m).catch(() => undefined);
     if (m.isSub) zone.sub = { mac: id.mac, name: id.name, levelDb };
     else zone.members.push({ mac: id.mac, name: id.name, model: id.model, channelMode: m.channelMode, distance: m.distance, levelDb });
   }
@@ -282,10 +285,10 @@ export function validateSnapshot(input: unknown): Snapshot {
         if (!CHANNELS.has(m?.channelMode)) throw bad(`${at}: unknown channel ${m?.channelMode}`);
         return {
           mac: once(mac(m.mac, `${at}: member MAC`)), name: str(m.name, `${at}: member name`), model: str(m.model ?? '', `${at}: member model`),
-          channelMode: m.channelMode, distance: optNum(m.distance, 0, 30, `${at}: distance`), levelDb: checkNum(m.levelDb ?? 0, -10, 10, `${at}: level`),
+          channelMode: m.channelMode, distance: optNum(m.distance, 0, 30, `${at}: distance`), levelDb: optNum(m.levelDb, -10, 10, `${at}: level`),
         };
       }),
-      sub: z.sub ? { mac: once(mac(z.sub.mac, `${at}: sub MAC`)), name: str(z.sub.name, `${at}: sub name`), levelDb: checkNum(z.sub.levelDb ?? 0, -10, 10, `${at}: sub level`) } : undefined,
+      sub: z.sub ? { mac: once(mac(z.sub.mac, `${at}: sub MAC`)), name: str(z.sub.name, `${at}: sub name`), levelDb: optNum(z.sub.levelDb, -10, 10, `${at}: sub level`) } : undefined,
       dynamicSlaves: slaves.map((x: any) => ({ mac: once(mac(x?.mac, `${at}: grouped speaker MAC`)), name: str(x.name, `${at}: grouped speaker name`) })),
       volume: z.volume.mute ? { level: 0, mute: true, muteLevel: checkNum(z.volume.muteLevel ?? level, 0, 100, `${at}: volume`) } : { level, mute: false },
       settings: settings.map((x: any) => {
