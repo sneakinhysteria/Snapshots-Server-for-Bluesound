@@ -3,7 +3,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { bluosGet, bluosPost, memberSyncStatus, setSlaveLevel, setVolume, syncStatus, type SyncStatus } from './bluos.ts';
+import { BLUOS_PORT, bluosGet, bluosPost, memberSyncStatus, setSlaveLevel, setVolume, syncStatus, type SyncStatus } from './bluos.ts';
 import { selfUrl } from './stream.ts';
 import { expectVolume } from './origin.ts';
 import { reconcileAirplay } from './airplay.ts';
@@ -123,7 +123,7 @@ async function checkResponding(toDissolve: SyncStatus[], needed: string[], lan: 
   const ok = new Set(lan.keys());
   for (const leader of toDissolve) {
     for (const m of [...leader.members, ...leader.slaves]) {
-      const onLan = [...lan.values()].find((p) => p.host === m.id);
+      const onLan = [...lan.values()].find((p) => p.host === m.id && m.port === BLUOS_PORT);
       if (onLan) continue;
       const s = await memberSyncStatus(leader.host, m).catch(() => undefined);
       if (!s?.mac) fail(`${'name' in m && m.name ? m.name : m.id} (in "${leader.name}")`);
@@ -275,12 +275,16 @@ function compare(target: Snapshot, actual: Snapshot): string[] {
     const label = t.groupName ?? t.leader.name;
     if (!a) { diffs.push(`"${label}": leader ${t.leader.name} is not a group leader`); continue; }
     if (zoneKey(a) !== zoneKey(t)) { diffs.push(`"${label}": layout differs from snapshot`); continue; }
+    const level = (name: string, actual?: number, expected?: number) => {
+      if (expected === undefined) return; // not known when the snapshot was taken, so nothing was restored
+      if (actual === undefined) diffs.push(`"${label}": ${name} level could not be read, expected ${expected} dB`);
+      else if (Math.abs(actual - expected) > 0.25) diffs.push(`"${label}": ${name} level ${actual} dB, expected ${expected} dB`);
+    };
     for (const m of t.members) {
       const am = a.members.find((x) => x.mac === m.mac);
-      if (am && Math.abs(am.levelDb - m.levelDb) > 0.25) diffs.push(`"${label}": ${m.name} level ${am.levelDb} dB, expected ${m.levelDb} dB`);
+      if (am) level(m.name, am.levelDb, m.levelDb);
     }
-    if (t.sub && a.sub && Math.abs(a.sub.levelDb - t.sub.levelDb) > 0.25)
-      diffs.push(`"${label}": ${t.sub.name} level ${a.sub.levelDb} dB, expected ${t.sub.levelDb} dB`);
+    if (t.sub && a.sub) level(t.sub.name, a.sub.levelDb, t.sub.levelDb);
     for (const d of diffSettings(t.settings ?? [], a.settings)) diffs.push(`"${label}": ${d}`);
   }
   return diffs;

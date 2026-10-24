@@ -224,8 +224,9 @@ function zoneHtml(z) {
     rows.push([z.leader.name, 'Distance', `${z.leader.distance ?? '–'} m`]);
     for (const m of z.members) rows.push([m.name, 'Distance', `${m.distance ?? '–'} m`]);
   }
-  for (const m of z.members) rows.push([m.name, 'Level', `${m.levelDb} dB`]);
-  if (z.sub) rows.push([z.sub.name, 'Level', `${z.sub.levelDb} dB`]);
+  const level = (db) => (db === undefined ? 'not read' : `${db} dB`);
+  for (const m of z.members) rows.push([m.name, 'Level', level(m.levelDb)]);
+  if (z.sub) rows.push([z.sub.name, 'Level', level(z.sub.levelDb)]);
   for (const s of z.settings || []) rows.push([s.ownerName, s.label, optionLabel(s)]);
   const details = rows.length ? `<details><summary>${rows.length} settings</summary><table>${
     rows.map(([o, l, v]) => `<tr><td>${esc(o)}</td><td>${esc(l)}</td><td>${esc(v)}</td></tr>`).join('')}</table></details>` : '';
@@ -279,8 +280,8 @@ function editZoneHtml(z) {
       num(`data-kind="mdist" ${zm} data-mac="${esc(m.mac)}" min="0" max="30"`, m.distance ?? '') + '<span class="unit">m</span>']);
   }
   for (const m of z.members) rows.push([`${m.name} level`,
-    num(`data-kind="mlevel" ${zm} data-mac="${esc(m.mac)}" min="-10" max="10"`, m.levelDb) + '<span class="unit">dB</span>']);
-  if (z.sub) rows.push([`${z.sub.name} level`, num(`data-kind="sublevel" ${zm} min="-10" max="10"`, z.sub.levelDb) + '<span class="unit">dB</span>']);
+    num(`data-kind="mlevel" ${zm} data-mac="${esc(m.mac)}" min="-10" max="10"`, m.levelDb ?? '') + '<span class="unit">dB</span>']);
+  if (z.sub) rows.push([`${z.sub.name} level`, num(`data-kind="sublevel" ${zm} min="-10" max="10"`, z.sub.levelDb ?? '') + '<span class="unit">dB</span>']);
 
   const byOwner = new Map();
   for (const s of z.settings || []) {
@@ -324,8 +325,9 @@ function collectEdits(card) {
       case 'mute': z.volume = { ...(z.volume || {}), mute: el.checked }; break;
       case 'ldist': z.leaderDistance = val(el); break;
       case 'mdist': memberOf(z, el.dataset.mac).distance = val(el); break;
-      case 'mlevel': memberOf(z, el.dataset.mac).levelDb = val(el); break;
-      case 'sublevel': z.sub = { levelDb: val(el) }; break;
+      // A level that was never read stays unset until someone enters one.
+      case 'mlevel': if (el.value.trim() !== '') memberOf(z, el.dataset.mac).levelDb = val(el); break;
+      case 'sublevel': if (el.value.trim() !== '') z.sub = { levelDb: val(el) }; break;
       case 'setting':
         if (el.dataset.part) {
           const key = `${el.dataset.zone}|${el.dataset.owner}|${el.dataset.name}`;
