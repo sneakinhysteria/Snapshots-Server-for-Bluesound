@@ -54,10 +54,10 @@ function watch(mac: string, host: string, name: string) {
   watches.set(mac, w);
   const log = (kind: string, detail: string) => events.add({ mac, player: w.name, kind, detail });
 
-  let vol: { level: string; mute: string } | undefined;
+  let vol: { level: string; mute: string; muteLevel?: string } | undefined;
   longPoll(w, '/Volume', (body, first) => {
     const v = body.volume;
-    const now = { level: text(v), mute: v.mute ?? '0' };
+    const now = { level: text(v), mute: v.mute ?? '0', muteLevel: v.muteVolume };
     if (!first && vol && (now.level !== vol.level || now.mute !== vol.mute)) {
       const parts = [`${vol.level} → ${now.level}`, `${v.db} dB`];
       if (now.mute !== vol.mute) parts.push(now.mute === '1' ? 'muted' : 'unmuted');
@@ -70,6 +70,10 @@ function watch(mac: string, host: string, name: string) {
         const change = { mac, host: w.host, player: w.name, from: Number(vol.level), to: Number(now.level), source, t: Date.now() };
         onVolumeChange(change);
         onVolumeAfterStart(change);
+      } else if (now.mute === '0' && vol.muteLevel !== undefined && now.level !== vol.muteLevel) {
+        // A volume step while muted unmutes the player at the new level (e.g. a TV's CEC drift).
+        // The guard judges it as a step from the level before muting, and mutes again when it undoes it.
+        onVolumeChange({ mac, host: w.host, player: w.name, from: Number(vol.muteLevel), to: Number(now.level), source, t: Date.now(), unmuted: true });
       }
     }
     vol = now;

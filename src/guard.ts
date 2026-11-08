@@ -10,9 +10,9 @@ import { expectVolume } from './origin.ts';
 
 export type GuardMode = 'off' | 'detect' | 'undo' | 'lock';
 
-export interface VolumeChange { mac: string; host: string; player: string; from: number; to: number; source: string; t: number }
+export interface VolumeChange { mac: string; host: string; player: string; from: number; to: number; source: string; t: number; unmuted?: boolean }
 
-interface Seq { mac: string; host: string; player: string; t: number; from: number; to: number; steps: number; minGap: number }
+interface Seq { mac: string; host: string; player: string; t: number; from: number; to: number; steps: number; minGap: number; unmuted?: boolean }
 
 export interface Pattern {
   mac: string;
@@ -155,10 +155,15 @@ async function restore(s: Seq, why: string) {
   try {
     expectVolume(s.host, s.from, 'Guard');
     await bluosGet(s.host, '/Volume', { level: s.from, tell_slaves: 0 });
+    if (s.unmuted) {
+      // The change unmuted the player: mute it again (it keeps s.from as the level to return to).
+      expectVolume(s.host, 0, 'Guard');
+      await bluosGet(s.host, '/Volume', { mute: 1, tell_slaves: 0 });
+    }
     undone++;
     kv.set('guardUndone', undone);
     lastAction = new Date().toISOString();
-    events.add({ mac: s.mac, player: s.player, kind: 'guard', detail: `undone (${why}): ${s.to} → ${s.from}` });
+    events.add({ mac: s.mac, player: s.player, kind: 'guard', detail: `undone (${why}): ${s.to} → ${s.from}${s.unmuted ? ', muted again' : ''}` });
   } catch (e: any) {
     events.add({ mac: s.mac, player: s.player, kind: 'guard', detail: `could not undo (${why}): ${e.message}` });
   }
@@ -167,7 +172,7 @@ async function restore(s: Seq, why: string) {
 async function judge(changes: VolumeChange[]) {
   const first = changes[0], last = changes[changes.length - 1];
   const minGap = Math.min(Infinity, ...changes.slice(1).map((c, i) => c.t - changes[i].t));
-  const seq: Seq = { mac: first.mac, host: first.host, player: first.player, t: first.t, from: first.from, to: last.to, steps: changes.length, minGap };
+  const seq: Seq = { mac: first.mac, host: first.host, player: first.player, t: first.t, from: first.from, to: last.to, steps: changes.length, minGap, unmuted: first.unmuted };
 
   const before = patterns.get(seq.mac);
   const rhythm = inWindow(before, seq.t);
@@ -217,7 +222,7 @@ export function onVolumeChange(c: VolumeChange) {
 export function seedGuard() {
   const cutoff = Date.now() - HISTORY_MS;
   const vol = events.list(2000, 'volume').reverse()
-    .filter((e) => e.detail.includes('source: CEC') && new Date(e.t).getTime() > cutoff)
+    .filter((e) => e.detail.includes('source: CEC') && !/\b(un)?muted\b/.test(e.detail) && new Date(e.t).getTime() > cutoff)
     .sort((a, b) => a.t.localeCompare(b.t));
   for (const e of vol) {
     const m = e.detail.match(/^(\d+) → (\d+)/);
