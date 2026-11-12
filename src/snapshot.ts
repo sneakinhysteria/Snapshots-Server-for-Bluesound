@@ -89,10 +89,11 @@ export async function resolveMac(leader: SyncStatus, m: { id: string; port: numb
   try {
     const s = await memberSyncStatus(leader.host, m);
     if (s.mac) {
+      // Also registers speakers first seen inside a home cinema group (fresh install): they have no LAN address yet.
       const prev = devices.list().find((d) => d.mac === s.mac);
-      if (prev) devices.upsert({ mac: s.mac, name: prev.name, model: s.modelName || prev.model, modelCode: s.model, version: s.version, lastIp: prev.lastIp });
-      if (prev && !prev.foundBy) devices.setFoundBy(s.mac, 'group leader');
-      if (prev) devices.setDirect(s.mac, m.id, leader.mac); // reachable only through this leader
+      devices.upsert({ mac: s.mac, name: prev?.name ?? s.name, model: s.modelName || prev?.model || '', modelCode: s.model, version: s.version, lastIp: prev?.lastIp ?? '' });
+      if (!prev?.foundBy) devices.setFoundBy(s.mac, 'group leader');
+      devices.setDirect(s.mac, m.id, leader.mac); // reachable only through this leader
       return { mac: s.mac, name: s.name, model: s.modelName };
     }
   } catch {
