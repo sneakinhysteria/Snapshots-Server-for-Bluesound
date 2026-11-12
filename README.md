@@ -19,7 +19,7 @@ Setups are built in the BluOS app; this app only stores and recreates them.
 
 ## Requirements
 
-- Docker on a host in the same network as the speakers (Linux; host networking is required).
+- Docker on a computer in the same network as the speakers: a Linux host or NAS (recommended, all features), or a Mac or Windows PC with Docker Desktop (no AirPlay receiver, see [Mac and Windows](#mac-and-windows-docker-desktop)).
 - Free TCP port 8095 (configurable), UDP 11430 (speaker discovery), and for AirPlay TCP 7000+ and UDP 319/320.
 - Tested with Pulse Soundbar+, Pulse Sub+ and Pulse Flex (1st gen) on BluOS 4.16.
 
@@ -32,6 +32,53 @@ docker compose up -d
 ```
 
 Open `http://<host>:8095`.
+
+## Mac and Windows (Docker Desktop)
+
+Step by step, for a Mac or Windows PC that stays switched on while you use the speakers. The server only runs while the computer is awake.
+
+**What works and what doesn't:** snapshots, recall, inputs and volume, the CEC volume protection and the activity log all work. The AirPlay receivers don't: Docker Desktop runs containers in a virtual machine that can't announce them in your network. The iPhone/iPad/Apple TV app can't find the server by itself either; enter its address there by hand.
+
+1. **Install Docker Desktop** from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) and start it. On Windows, accept the setup of WSL 2 if the installer asks, and restart the PC when asked. Wait until Docker Desktop says *Engine running*.
+
+2. **Find your computer's IP address.**
+   - Mac: System Settings → Wi-Fi (or Network → Ethernet) → *Details…* → *IP address*, e.g. `192.168.1.10`.
+   - Windows: Settings → Network & internet → Wi-Fi (or Ethernet) → your network → *IPv4 address*.
+
+   Your computer should keep this address. In your router, give it a fixed address (DHCP reservation) if you can.
+
+3. **Create a folder** for the server, e.g. `Snapshots Server` in your home folder (Mac) or `Documents` (Windows). The server keeps its data in a `data` folder inside it.
+
+4. **Download the compose file** [`deploy/docker-compose.desktop.yml`](deploy/docker-compose.desktop.yml) (on that page: *Download raw file*) into this folder and rename it to `docker-compose.yml`. On Windows, make sure it doesn't end in `.txt` (File Explorer → View → Show → *File name extensions*).
+
+5. **Edit it** with TextEdit (Mac: Format → *Make Plain Text* first) or Notepad (Windows) and change three lines:
+   - `TZ`: your time zone, e.g. `Europe/London`, `America/New_York`.
+   - `BLUOS_SUBNETS`: your IP address with the last number replaced by `0`, followed by `/24`. For `192.168.1.10` that's `192.168.1.0/24`.
+   - `PUBLIC_URL`: `http://` + your IP address + `:8095`, e.g. `http://192.168.1.10:8095`.
+
+   Keep the quotes and the spaces at the start of the lines.
+
+6. **Start the server.** Open a terminal in the folder:
+   - Mac: open *Terminal* (Applications → Utilities), type `cd ` (with a space), drag the folder from Finder into the window and press Return.
+   - Windows: in File Explorer, open the folder, click the address bar, type `cmd` and press Enter.
+
+   Then run:
+
+   ```sh
+   docker compose up -d
+   ```
+
+   The first start downloads the server (a few hundred MB).
+
+7. **Open** [http://localhost:8095](http://localhost:8095) on this computer, or `http://<your IP address>:8095` from a phone or tablet. On Windows, if a firewall window appears, allow access on *private networks*; otherwise the speakers can't reach the server and recalls fail at the playback check.
+
+8. Go to the **Speakers** tab and click **Scan now**. Your speakers should appear within a minute.
+
+**Starting automatically:** in Docker Desktop's settings, enable *Start Docker Desktop when you sign in to your computer*. The server then starts with it.
+
+**Updating:** in the same folder run `docker compose pull` and then `docker compose up -d`. Your snapshots stay in the `data` folder.
+
+**If no speakers appear:** check `BLUOS_SUBNETS` (the first three numbers must match your computer's IP address) and that the computer is in the same network as the speakers, not a guest network. After editing the file, run `docker compose up -d` again.
 
 ## Unraid
 

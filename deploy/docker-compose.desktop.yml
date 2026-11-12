@@ -1,0 +1,17 @@
+# Compose file for Docker Desktop (Mac, Windows). See README "Mac and Windows".
+# Docker Desktop runs containers in a virtual machine, so the server can't see your network
+# directly: tell it where the speakers are and how they reach this computer.
+services:
+  snapshots-server-for-bluesound:
+    image: ghcr.io/sneakinhysteria/snapshots-server-for-bluesound:latest
+    container_name: snapshots-server-for-bluesound
+    ports:
+      - "8095:8095"
+    environment:
+      TZ: "Europe/Berlin"                        # your time zone
+      BLUOS_SUBNETS: "192.168.1.0/24"            # your network: your computer's IP address with the last number replaced by 0, plus /24
+      PUBLIC_URL: "http://192.168.1.10:8095"     # your computer's IP address
+      MDNS: "off"                                # announcements can't leave Docker Desktop's virtual machine
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
