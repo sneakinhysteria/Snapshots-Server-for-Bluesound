@@ -10,7 +10,7 @@ import { reconcileAirplay } from './airplay.ts';
 import { discover, probeHosts } from './discovery.ts';
 import { captureSnapshot, isSurround, macResolver, setLatest, resolveMac, zoneKey, zoneMacs, type Snapshot, type SnapshotZone } from './snapshot.ts';
 import { diffSettings, restoreSettings } from './settings.ts';
-import { devices } from './store.ts';
+import { devices, kv } from './store.ts';
 
 export interface Job {
   id: string;
@@ -25,6 +25,24 @@ export interface Job {
 }
 
 const jobs = new Map<string, Job>();
+
+// Finished recalls (log with timestamps, no snapshot data), newest first; kept across restarts.
+const HISTORY = 30;
+type JobSummary = Omit<Job, 'after'> & { durationMs?: number; settleMs?: number };
+export const recallHistory = (): JobSummary[] => kv.get<JobSummary[]>('recallHistory') ?? [];
+function remember(job: Job, settleMs: number) {
+  const { after: _after, ...rest } = job;
+  const durationMs = job.finishedAt ? new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime() : undefined;
+  kv.set('recallHistory', [{ ...rest, durationMs, settleMs }, ...recallHistory()].slice(0, HISTORY));
+}
+
+// Wait after speakers leave a home cinema group before grouping them again (configurable, for tests).
+export const recallSettings = () => ({ settleSeconds: kv.get<number>('recallSettleSeconds') ?? 30 });
+export function setRecallSettings(v: { settleSeconds?: unknown }) {
+  const n = Number(v.settleSeconds);
+  if (!Number.isFinite(n) || n < 0 || n > 120) throw Object.assign(new Error('settleSeconds must be between 0 and 120'), { statusCode: 400 });
+  kv.set('recallSettleSeconds', Math.round(n));
+}
 let running: Job | undefined;
 
 let last: Job | undefined;
@@ -34,9 +52,9 @@ export const lastJob = () => last;
 
 const DISSOLVE_TIMEOUT_MS = 180_000;
 const GROUP_TIMEOUT_MS = 60_000;
-// Speakers leaving a home cinema group need time before they can form a working group again
-// (the BluOS app took ~45 s; grouping after 15 s produced a pair that never started playback).
-const SETTLE_AFTER_SURROUND_MS = 30_000;
+// Speakers leaving a home cinema group needed time before they could form a working group again
+// (BluOS 4.16: grouping after 15 s once produced a pair that never started playback). Default 30 s,
+// configurable via recallSettings() to measure what current firmware needs.
 const PLAYBACK_CHECK_MS = 20_000;
 
 export function startRecall(snapshotId: number, snapshotName: string, target: Snapshot): Job {
@@ -54,7 +72,12 @@ export function startRecall(snapshotId: number, snapshotName: string, target: Sn
   recall(target, log, job)
     .then(() => { job.status = job.differences.length ? 'failed' : 'done'; })
     .catch((e) => { log(String(e?.message ?? e), 'error'); job.status = 'failed'; })
-    .finally(() => { job.finishedAt = new Date().toISOString(); running = undefined; });
+    .finally(() => {
+      job.finishedAt = new Date().toISOString();
+      log(`Finished in ${((Date.parse(job.finishedAt) - Date.parse(job.startedAt)) / 1000).toFixed(1)} s`);
+      running = undefined;
+      try { remember(job, recallSettings().settleSeconds * 1000); } catch {}
+    });
   return job;
 }
 
@@ -66,7 +89,7 @@ async function waitFor<T>(what: string, timeoutMs: number, check: (attempt: numb
     const r = await check(attempt).catch(() => undefined);
     if (r !== undefined) return r;
     if (Date.now() > until) throw new Error(`Timed out waiting for ${what}`);
-    await sleep(3000);
+    await sleep(1000);
   }
 }
 
@@ -190,12 +213,13 @@ type Input = { url: string; title: string };
 async function inputPlays(leaderHost: string, input: Input, log: Log): Promise<boolean> {
   log(`Checking playback with input ${input.title}`);
   await bluosGet(leaderHost, '/Play', { url: input.url }, 15_000);
+  // Playing with an audio format, steadily for 1.5 s (4 readings 0.5 s apart).
   let good = 0;
   for (const until = Date.now() + 10_000; Date.now() < until;) {
-    await sleep(1500);
+    await sleep(500);
     const st = (await bluosGet(leaderHost, '/Status')).status ?? {};
     good = ['stream', 'play'].includes(st.state) && (st.quality || st.streamFormat) ? good + 1 : 0;
-    if (good >= 2) return true;
+    if (good >= 4) return true;
   }
   return false;
 }
@@ -209,7 +233,7 @@ async function playbackWorks(leaderHost: string, log: Log, input?: Input): Promi
     await bluosGet(leaderHost, '/Play', { url: `${selfUrl(leaderHost)}/stream/check.flac` }, 15_000);
     const until = Date.now() + PLAYBACK_CHECK_MS;
     while (Date.now() < until) {
-      await sleep(2000);
+      await sleep(500);
       const st = (await bluosGet(leaderHost, '/Status')).status ?? {};
       if (['stream', 'play'].includes(st.state) && Number(st.secs) >= 2) return true;
     }
@@ -313,9 +337,10 @@ async function recall(target: Snapshot, log: Log, job: Job) {
   for (const leader of leaders) await dissolve(leader, log);
 
   if (needed.length) lan = await waitUntilFree(needed, log);
-  if (needed.length && toDissolve.some(isSurround)) {
-    log(`Letting speakers settle after leaving "${toDissolve.filter(isSurround).map((z) => z.groupName ?? z.leader.name).join('", "')}" (${SETTLE_AFTER_SURROUND_MS / 1000} s)`);
-    await sleep(SETTLE_AFTER_SURROUND_MS);
+  const settleMs = recallSettings().settleSeconds * 1000;
+  if (needed.length && toDissolve.some(isSurround) && settleMs > 0) {
+    log(`Letting speakers settle after leaving "${toDissolve.filter(isSurround).map((z) => z.groupName ?? z.leader.name).join('", "')}" (${settleMs / 1000} s)`);
+    await sleep(settleMs);
   }
 
   for (const z of rebuild) {

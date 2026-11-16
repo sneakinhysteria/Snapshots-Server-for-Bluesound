@@ -283,6 +283,8 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 | DELETE | `/api/snapshots/:id` | Delete |
 | POST | `/api/snapshots/:id/recall` | Start recall, returns job |
 | GET | `/api/jobs/:id`, `/api/jobs/running` | Recall progress |
+| GET | `/api/jobs` | Last 30 recalls with timestamped logs |
+| GET/PUT | `/api/recall/settings` | `{"settleSeconds"}`: wait after speakers leave a home cinema group (default 30) |
 | GET | `/api/events?kind=volume` | Activity log |
 | GET | `/api/events/stream` | Activity log, live (Server-Sent Events) |
 | GET/PUT | `/api/guard` | CEC volume protection: status and learned patterns / `{"mode": "off\|detect\|undo\|lock"}` |

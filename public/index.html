@@ -150,6 +150,15 @@
         <b>Detect only</b> logs them in Activity. <b>Undo automatic changes</b> restores the volume when a change fits the learned
         pattern; remote clicks stay. <b>Lock volume</b> undoes every CEC volume change (use the BluOS app or Home Assistant to change it).</div></div>
 
+    <div class="section-head"><h2>Recall</h2></div>
+    <div class="card">
+      <div class="row"><label for="settle" class="grow">Wait after leaving a home cinema group (seconds)</label>
+        <input type="number" id="settle" min="0" max="120" step="1"></div>
+      <div class="hint">Pause before speakers that left a home cinema group are grouped again. On BluOS 4.16, grouping after 15 s once
+        produced a stereo pair that never played; the playback check after each recall restarts such a group.</div>
+      <div class="actions"><button id="settleSave" class="primary">Save</button><span id="settleSaved" class="meta"></span></div>
+    </div>
+
     <div class="section-head"><h2>Volume when the TV starts</h2>
       <select id="tvMode" class="small-select">
         <option value="off">Off</option>
@@ -173,6 +182,8 @@
     <div class="section-head"><h2>Activity</h2>
       <label class="meta"><input type="checkbox" id="volOnly"> volume and guard only</label></div>
     <div class="card"><div id="events" class="log empty" style="max-height:none">Loading…</div></div>
+    <div class="section-head"><h2>Recent recalls</h2></div>
+    <div id="recalls" class="empty">Loading…</div>
   </section>
   <footer class="footer">
     <a href="https://github.com/sneakinhysteria/Snapshots-Server-for-Bluesound" target="_blank" rel="noopener">Snapshots Server for Bluesound on GitHub</a>
@@ -408,6 +419,15 @@ function renderSnapshots() {
   }).join('');
 }
 
+// Each line with the seconds since the previous one, so slow steps stand out.
+function jobLog(job) {
+  let prev = Date.parse(job.startedAt);
+  return job.log.map((l) => {
+    const t = Date.parse(l.t), d = ((t - prev) / 1000).toFixed(1); prev = t;
+    return `<div class="${l.level}">${new Date(t).toLocaleTimeString()}  +${d.padStart(5)} s  ${esc(l.msg)}</div>`;
+  }).join('');
+}
+
 function renderJob(job) {
   const el = $('#job');
   if (!job) { el.hidden = true; return; }
@@ -416,7 +436,7 @@ function renderJob(job) {
   el.innerHTML = `<div class="row"><div class="grow name">${esc(job.snapshotName)}</div>
       <span class="status-${job.status}">${status}</span>
       ${job.status !== 'running' ? '<button class="small" data-act="close-job">Close</button>' : ''}</div>
-    <div class="log">${job.log.map((l) => `<div class="${l.level}">${new Date(l.t).toLocaleTimeString()}  ${esc(l.msg)}</div>`).join('')}</div>`;
+    <div class="log">${jobLog(job)}</div>`;
   const log = el.querySelector('.log'); log.scrollTop = log.scrollHeight;
 }
 
@@ -593,8 +613,8 @@ function showTab(name) {
   try { localStorage.setItem('tab', name); } catch {}
   if (name === 'snapshots' && typeof loadZones === 'function') loadZones();
   if (name === 'speakers') loadSpeakers();
-  if (name === 'helpers') { loadAirplay(); loadGuard(); loadTvStart(); }
-  if (name === 'activity') loadEvents();
+  if (name === 'helpers') { loadAirplay(); loadGuard(); loadTvStart(); loadRecallSettings(); }
+  if (name === 'activity') { loadEvents(); loadRecalls(); }
 }
 document.querySelector('.tabs').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab);
@@ -623,6 +643,29 @@ async function loadEvents() {
     el.className = 'log' + (list.length ? '' : ' empty');
     el.innerHTML = list.length ? list.map(eventLine).join('') : 'No changes recorded yet';
   } catch (e) { $('#events').textContent = e.message; }
+}
+
+// ---- Recall settings and history ----
+async function loadRecallSettings() {
+  try { $('#settle').value = (await api('GET', '/api/recall/settings')).settleSeconds; } catch (e) { showError(e); }
+}
+$('#settleSave').addEventListener('click', async () => {
+  showError(null);
+  try {
+    await api('PUT', '/api/recall/settings', { settleSeconds: Number($('#settle').value) });
+    $('#settleSaved').textContent = 'Saved'; setTimeout(() => { $('#settleSaved').textContent = ''; }, 2000);
+  } catch (e) { showError(e); }
+});
+async function loadRecalls() {
+  try {
+    const list = await api('GET', '/api/jobs');
+    const el = $('#recalls');
+    el.className = list.length ? '' : 'empty';
+    el.innerHTML = list.length ? list.map((j) => `<details class="card">
+      <summary>${new Date(j.startedAt).toLocaleString()} · <b>${esc(j.snapshotName)}</b> · ${j.durationMs ? (j.durationMs / 1000).toFixed(0) + ' s' : '–'}
+        · <span class="status-${j.status}">${j.status}</span>${j.settleMs !== undefined ? ` · wait ${j.settleMs / 1000} s` : ''}</summary>
+      <div class="log">${jobLog(j)}</div></details>`).join('') : 'No recalls recorded yet';
+  } catch (e) { $('#recalls').textContent = e.message; }
 }
 
 // ---- Inputs and volume (per zone; same order and content as the iOS/tvOS apps) ----

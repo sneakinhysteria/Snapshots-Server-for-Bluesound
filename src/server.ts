@@ -15,7 +15,7 @@ import { guardInfo, seedGuard, setGuardMode, type GuardMode } from './guard.ts';
 import { setTvStartConfig, tvStartConfig, type TvStartConfig } from './tvstart.ts';
 import { speakerList } from './speakers.ts';
 import { discover, probeHosts, scanSubnets } from './discovery.ts';
-import { getJob, lastJob, runningJob, startRecall } from './recall.ts';
+import { getJob, lastJob, recallHistory, recallSettings, runningJob, setRecallSettings, startRecall } from './recall.ts';
 import { devices, eventBus, events, snapshots, type PlayerEvent } from './store.ts';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
@@ -283,6 +283,12 @@ app.get('/api/state', async () => {
 });
 
 app.get('/api/jobs/running', async () => runningJob() ?? null);
+app.get('/api/jobs', async () => recallHistory());
+app.get('/api/recall/settings', async () => recallSettings());
+app.put<{ Body: { settleSeconds?: number } }>('/api/recall/settings', async (req) => {
+  setRecallSettings(req.body ?? {});
+  return recallSettings();
+});
 
 app.get<{ Params: { id: string } }>('/api/jobs/:id', async (req) => {
   const job = getJob(req.params.id);
