@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { join } from 'node:path';
-import { applyEdits, validateSnapshot, backfillMeta, refreshNames, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
+import { applyEdits, validateSnapshot, backfillMeta, refreshNames, dropIrrelevant, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
 import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirplay, setAirplayLogger, stopAllAirplay } from './airplay.ts';
 import { registerStreams } from './stream.ts';
 import { versionInfo } from './version.ts';
@@ -56,7 +56,8 @@ function afterRead(current: Snapshot) {
   for (const s of snapshots.list()) {
     const filled = backfillMeta(s.data, current);
     const renamed = refreshNames(filled ?? s.data, names);
-    if (filled || renamed) snapshots.update(s.id, { data: renamed ?? filled }, false);
+    const cleaned = dropIrrelevant(renamed ?? filled ?? s.data);
+    if (filled || renamed || cleaned) snapshots.update(s.id, { data: cleaned ?? renamed ?? filled }, false);
   }
 }
 

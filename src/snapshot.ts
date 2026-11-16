@@ -107,6 +107,22 @@ export async function resolveMac(leader: SyncStatus, m: { id: string; port: numb
 export const macResolver = (leader: SyncStatus, lan: Map<string, SyncStatus>) =>
   (ip: string) => resolveMac(leader, { id: ip, port: 11000 }, lan);
 
+// A player's "Subwoofer" setting only matters while a sub is paired with it. Without one the stored value
+// is just "off", and restoring it switched the soundbar's sub off for the next time the sub was with it.
+const SUB_ONLY = new Set(['subwoofer']);
+export const relevantSettings = (z: SnapshotZone): StoredSetting[] =>
+  z.sub ? z.settings : z.settings.filter((st) => !(SUB_ONLY.has(st.name) && st.owner === z.leader.mac));
+
+/** Removes settings that don't apply to a stored zone (see relevantSettings). */
+export function dropIrrelevant(stored: Snapshot): Snapshot | undefined {
+  let changed = false;
+  for (const z of stored.zones) {
+    const keep = relevantSettings(z);
+    if (keep.length !== z.settings.length) { z.settings = keep; changed = true; }
+  }
+  return changed ? stored : undefined;
+}
+
 async function captureZone(leader: SyncStatus, lan: Map<string, SyncStatus>): Promise<SnapshotZone> {
   const settings = await readSettings(leader, macResolver(leader, lan));
   const known = devices.list().find((d) => d.mac === leader.mac);
@@ -135,6 +151,7 @@ async function captureZone(leader: SyncStatus, lan: Map<string, SyncStatus>): Pr
     const id = await resolveMac(leader, s, lan);
     zone.dynamicSlaves.push({ mac: id.mac, name: id.name });
   }
+  zone.settings = relevantSettings(zone);
   return zone;
 }
 

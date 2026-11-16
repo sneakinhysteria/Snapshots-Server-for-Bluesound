@@ -8,7 +8,7 @@ import { selfUrl } from './stream.ts';
 import { expectVolume } from './origin.ts';
 import { reconcileAirplay } from './airplay.ts';
 import { discover, probeHosts } from './discovery.ts';
-import { captureSnapshot, isSurround, macResolver, setLatest, resolveMac, zoneKey, zoneMacs, type Snapshot, type SnapshotZone } from './snapshot.ts';
+import { captureSnapshot, relevantSettings, isSurround, macResolver, setLatest, resolveMac, zoneKey, zoneMacs, type Snapshot, type SnapshotZone } from './snapshot.ts';
 import { diffSettings, restoreSettings } from './settings.ts';
 import { devices, kv } from './store.ts';
 
@@ -287,7 +287,7 @@ async function restoreLevels(z: SnapshotZone, lan: Map<string, SyncStatus>, log:
     await setSlaveLevel(leaderHost, m, target);
   }
   log(`Levels restored for "${z.groupName ?? z.leader.name}"`);
-  for (const w of await restoreSettings(leader, z.settings ?? [], macResolver(leader, lan))) log(w);
+  for (const w of await restoreSettings(leader, relevantSettings(z), macResolver(leader, lan))) log(w);
   await setVolume(leaderHost, z.volume);
 }
 
@@ -305,7 +305,7 @@ function compare(target: Snapshot, actual: Snapshot): string[] {
     }
     if (t.sub && a.sub && Math.abs(a.sub.levelDb - t.sub.levelDb) > 0.25)
       diffs.push(`"${label}": ${t.sub.name} level ${a.sub.levelDb} dB, expected ${t.sub.levelDb} dB`);
-    for (const d of diffSettings(t.settings ?? [], a.settings)) diffs.push(`"${label}": ${d}`);
+    for (const d of diffSettings(relevantSettings(t), relevantSettings(a))) diffs.push(`"${label}": ${d}`);
   }
   return diffs;
 }
