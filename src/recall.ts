@@ -37,7 +37,7 @@ function remember(job: Job, settleMs: number) {
 }
 
 // Wait after speakers leave a home cinema group before grouping them again (configurable, for tests).
-export const recallSettings = () => ({ settleSeconds: kv.get<number>('recallSettleSeconds') ?? 30 });
+export const recallSettings = () => ({ settleSeconds: kv.get<number>('recallSettleSeconds') ?? 0 });
 export function setRecallSettings(v: { settleSeconds?: unknown }) {
   const n = Number(v.settleSeconds);
   if (!Number.isFinite(n) || n < 0 || n > 120) throw Object.assign(new Error('settleSeconds must be between 0 and 120'), { statusCode: 400 });
@@ -53,8 +53,9 @@ export const lastJob = () => last;
 const DISSOLVE_TIMEOUT_MS = 180_000;
 const GROUP_TIMEOUT_MS = 60_000;
 // Speakers leaving a home cinema group needed time before they could form a working group again
-// (BluOS 4.16: grouping after 15 s once produced a pair that never started playback). Default 30 s,
-// configurable via recallSettings() to measure what current firmware needs.
+// (BluOS 4.16: grouping after 15 s once produced a pair that never started playback). On 4.18.18,
+// grouping right away worked in all tests (2026-11-19), so the default is 0; the playback check
+// with restart fallback still catches a stuck group. Configurable via recallSettings().
 const PLAYBACK_CHECK_MS = 20_000;
 
 export function startRecall(snapshotId: number, snapshotName: string, target: Snapshot): Job {
@@ -206,7 +207,7 @@ async function build(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log) {
 // Plays inaudible noise at volume 0 and checks that playback advances. A group can look complete
 // in SyncStatus yet stay in "connecting" for any real audio (it still "plays" digital silence);
 // only a restart of its speakers helps.
-type Input = { url: string; title: string };
+type Input = { url: string; title: string; audio: boolean };
 
 // When the group was on an input (e.g. TV), switching back to it is the check: playing state with
 // an audio format, twice in a row. Falls back to the noise check if the input stays silent.
@@ -225,7 +226,8 @@ async function inputPlays(leaderHost: string, input: Input, log: Log): Promise<b
 }
 
 async function playbackWorks(leaderHost: string, log: Log, input?: Input): Promise<boolean> {
-  if (input && await inputPlays(leaderHost, input, log).catch(() => false)) return true;
+  // An input without audio at the start (TV off) can't show that the group plays.
+  if (input?.audio && await inputPlays(leaderHost, input, log).catch(() => false)) return true;
   log('Checking playback (silent)');
   expectVolume(leaderHost, 0, 'Recall (silent check)');
   await bluosGet(leaderHost, '/Volume', { level: 0, tell_slaves: 0 });
@@ -310,9 +312,19 @@ function compare(target: Snapshot, actual: Snapshot): string[] {
   return diffs;
 }
 
+// Within a recall, ask the speakers at their known addresses (fast); scan the network only when a
+// speaker the target needs is missing and not connected through a soundbar.
+async function readLan(macs: string[]): Promise<Map<string, SyncStatus>> {
+  const known = devices.list();
+  const lan = await probeHosts(known.map((d) => d.lastIp).filter(Boolean));
+  const missing = macs.filter((m) => !lan.has(m) && !known.find((d) => d.mac === m)?.directIp);
+  return missing.length ? discover() : lan;
+}
+
 async function recall(target: Snapshot, log: Log, job: Job) {
   log('Reading current setup');
-  let lan = await discover();
+  const targetMacs = [...new Set(target.zones.flatMap(zoneMacs))];
+  let lan = await readLan(targetMacs);
   const current = await captureSnapshot(lan);
 
   // Players on an input (TV/HDMI, optical, analog) are switched back to it at the end: the
@@ -321,7 +333,9 @@ async function recall(target: Snapshot, log: Log, job: Job) {
   for (const p of lan.values()) {
     if (p.master) continue;
     const st = (await bluosGet(p.host, '/Status').catch(() => undefined))?.status;
-    if (st?.service === 'Capture' && st.streamUrl) inputs.set(p.mac, { url: String(st.streamUrl), title: String(st.title1 ?? st.streamUrl) });
+    if (st?.service === 'Capture' && st.streamUrl) {
+      inputs.set(p.mac, { url: String(st.streamUrl), title: String(st.title1 ?? st.streamUrl), audio: !!(st.streamFormat || st.quality) });
+    }
   }
 
   const targetKeys = new Set(target.zones.map(zoneKey));
@@ -347,12 +361,12 @@ async function recall(target: Snapshot, log: Log, job: Job) {
     if (z.members.length || z.sub || z.dynamicSlaves.length) lan = await buildChecked(z, lan, log, job, false, inputs.get(z.leader.mac));
   }
 
-  lan = await discover();
+  lan = await readLan(targetMacs);
   // Groups that already matched are checked too: a recall of the active setup repairs a stuck group.
   for (const z of target.zones) {
     if (keep.has(zoneKey(z)) && (z.members.length || z.sub)) lan = await buildChecked(z, lan, log, job, true, inputs.get(z.leader.mac));
   }
-  lan = await discover();
+  lan = await readLan(targetMacs);
   for (const z of target.zones) {
     try {
       await restoreLevels(z, lan, log);
@@ -376,7 +390,7 @@ async function recall(target: Snapshot, log: Log, job: Job) {
   }
 
   log('Verifying');
-  const after = await captureSnapshot(await discover());
+  const after = await captureSnapshot(await readLan(targetMacs));
   job.differences.push(...compare(target, after));
   job.after = after;
   setLatest(after);
