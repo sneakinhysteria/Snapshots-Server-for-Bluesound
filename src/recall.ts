@@ -107,9 +107,26 @@ async function groupCommand(host: string, path: string, params: Record<string, s
 
 const isFree = (p: SyncStatus) => !p.master && p.members.length === 0 && p.slaves.length === 0;
 
+// Order and commands as in the BluOS app: the sub is unpaired first, as the app's "Unpair" button
+// does it (POST with unpair=1; a plain GET left the soundbar holding on to the sub once), then the
+// fixed group is dissolved and ordinary group members are removed.
 async function dissolve(leader: SyncStatus, log: Log) {
   const fixed = leader.members.filter((m) => !m.isSub);
   const subs = leader.members.filter((m) => m.isSub);
+  for (const s of subs) {
+    log(`Unpairing ${s.name} from "${leader.name}"`);
+    const path = `/RemoveSlave?slave=${encodeURIComponent(s.id)}&port=${s.port}`;
+    try {
+      await bluosPost(leader.host, path, { unpair: '1' }, 30_000);
+    } catch (e: any) {
+      if (e?.name !== 'TimeoutError') throw e;
+      log(`Unpair on ${leader.host} did not answer within 30 s, checking result`, 'warn');
+    }
+    await waitFor(`${s.name} to be unpaired`, GROUP_TIMEOUT_MS, async () => {
+      const now = await syncStatus(leader.host);
+      return now.members.some((m) => m.isSub) ? undefined : now;
+    });
+  }
   if (fixed.length) {
     log(`Dissolving "${leader.name}"`);
     if (leader.zoneUngroup) await groupCommand(leader.host, leader.zoneUngroup, {}, log);
@@ -119,10 +136,6 @@ async function dissolve(leader: SyncStatus, log: Log) {
   }
   for (const s of leader.slaves) {
     log(`Removing ${s.id} from group "${leader.name}"`);
-    await groupCommand(leader.host, '/RemoveSlave', { slave: s.id, port: s.port }, log);
-  }
-  for (const s of subs) {
-    log(`Unpairing ${s.name} from "${leader.name}"`);
     await groupCommand(leader.host, '/RemoveSlave', { slave: s.id, port: s.port }, log);
   }
 }

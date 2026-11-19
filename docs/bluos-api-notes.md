@@ -10,7 +10,7 @@ Commands used by this app that are not covered by the public *BluOS Custom Integ
 | Create home cinema named *Living Room* | `GET /AddSlave?channelMode=front&distance=3.6&group=Living%20Room&ports=11000,11000&slaveChannelMode=side_right,side_left&slaveDistance=1.6,1.6&slaves=<ip1>,<ip2>` (soundbar = leader; distances in metres, only settable here) |
 | Pair a subwoofer | `GET /AddSlave?pairSlave=1&slave=<sub-ip>&slaveChannelMode=subwoofer` (leader; takes the sub from a previous leader) |
 | Dissolve fixed group | `GET /RemoveSlave?slaves=<ip1>,<ip2>&ports=11000,11000` (leader; also given as `zoneUngroup` in `/SyncStatus`) |
-| Unpair subwoofer | `GET /RemoveSlave?slave=<sub-ip>&port=11000` (leader) |
+| Unpair subwoofer | `POST /RemoveSlave?slave=<sub-ip>&port=11000` with form body `unpair=1` (leader; as the BluOS app sends it, 2026-11-19 capture) |
 | Member level / balance, sub trim | `GET /SlaveVolume?slave=<ip>&port=11000[&db=<-10..10>]` (leader) |
 
 Group names must be URL-encoded with `%20` (not `+`). Group changes on a soundbar can take longer than 5 s to answer.
