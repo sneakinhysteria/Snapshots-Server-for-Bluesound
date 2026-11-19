@@ -112,10 +112,16 @@ async function readLive(leader: SyncStatus, macOfIp: (ip: string) => Promise<{ m
       if (hit) return hit;
     }
   };
-  const leaderName = (leader.group && findGroup(root, 'player')?.['@displayName']) || leader.name;
-  if (leader.group && leaderName !== leader.name) {
-    const prev = devices.list().find((d) => d.mac === leader.mac);
-    devices.upsert({ mac: leader.mac, name: leaderName, model: prev?.model ?? leader.model, lastIp: leader.host });
+  // The "Room name" setting holds it; the "player" group's title is just "Player" on some setups (e.g. soundbar + sub).
+  const findSetting = (node: any, id: string): any => {
+    for (const st of asArray(node?.setting)) if (st['@id'] === id) return st;
+    for (const g of asArray(node?.menuGroup)) { const hit = findSetting(g, id); if (hit) return hit; }
+  };
+  const playerPage = leader.group ? await readPage(leader.host, 'player').catch(() => undefined) : undefined;
+  const leaderName = (leader.group && (findSetting(playerPage, 'nodename')?.['@value'] || findGroup(root, 'player')?.['@displayName'])) || leader.name;
+  const prevDevice = devices.list().find((d) => d.mac === leader.mac);
+  if (leader.group && leaderName !== prevDevice?.name) {
+    devices.upsert({ mac: leader.mac, name: leaderName, model: prevDevice?.model ?? leader.model, lastIp: leader.host });
   }
   const seen = new Set<string>();
   const result: LiveSetting[] = [];

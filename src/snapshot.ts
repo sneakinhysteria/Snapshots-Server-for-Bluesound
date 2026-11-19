@@ -46,8 +46,9 @@ const CHANNEL: Record<string, string> = {
 export function roles(s: Snapshot): Map<string, string> {
   const out = new Map<string, string>();
   for (const z of s.zones) {
-    if (z.groupName || z.members.length) {
-      // Fixed group (stereo pair, home cinema): the group has a name of its own.
+    if (z.members.length) {
+      // Fixed group (stereo pair, home cinema): the group has a name of its own. A player with only a sub
+      // paired also reports a group name (its own), but isn't a group in that sense.
       const label = `"${z.groupName ?? z.leader.name}"`;
       out.set(z.leader.mac, `leader of ${label}`);
       for (const m of z.members) out.set(m.mac, `${CHANNEL[m.channelMode] ?? 'member'} in ${label}`);
